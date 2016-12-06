@@ -1,0 +1,10 @@
+name = Article per user
+description = Show the latest article per user, ordered by node post date
+core = 7.x
+package = InterCube media
+version = "7.x-1.0"
+
+; Base module files
+files[] = articleperuser.admin.inc
+files[] = articleperuser.install
+files[] = articleperuser.module

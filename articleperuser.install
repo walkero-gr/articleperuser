@@ -1,0 +1,33 @@
+<?php
+/**
+ * @version 1.0
+ * @file
+ * articleperuser file
+ *
+ * Created by George Sokianos (walkero@gmail.com)
+ *
+ * @todo
+ * 
+ * 
+ * @changelog
+ * 	v1.0  (2015/03/13)
+ */
+
+ 
+/**
+ * Implements hook_install().
+ */
+function articleperuser_install() {
+}
+
+/**
+ * Implements hook_install().
+ */
+function articleperuser_uninstall() {
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function articleperuser_schema() {
+}

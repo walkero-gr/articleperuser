@@ -1,0 +1,204 @@
+<?php 
+/**
+ * @file
+ * articleperuser file
+ *
+ * Created by George Sokianos (walkero@gmail.com)
+ *
+ * @todo
+ * 
+ * @changelog
+ * 	v1.0  (2015/03/13)
+ */
+
+
+
+/**
+ * Implements hook_block_info().
+ */
+function articleperuser_block_info() {
+  $blocks['articleperuser_list'] = array(
+    'info' => t('Article per User: List'),
+    'cache' => DRUPAL_CACHE_PER_ROLE
+  );
+
+  return $blocks;
+}
+
+
+/**
+ * Implements hook_block_view().
+ *
+ * This hook generates the contents of the blocks themselves.
+ */
+function articleperuser_block_view($delta = '') {
+  //The $delta parameter tells us which block is being requested.
+  $block = array();
+  switch ($delta) {
+    case 'articleperuser_list':		
+      // The subject is displayed at the top of the block. Note that it
+      // should be passed through t() for translation. The title configured
+      // for the block using Drupal UI supercedes this one.
+      $block['subject'] = t('Latest Article per User');
+	  $block['content'] = _articleperuser_list_content();
+      break;
+  }
+  return $block;
+}
+
+
+
+/**
+ * Implements hook_block_configure().
+ */
+function articleperuser_block_configure($delta = '') {
+  $form = array();
+  if ($delta == 'articleperuser_list') {
+	$available_roles = user_roles();
+	unset($available_roles[1]); // remove the anonymous role
+	$form['articleperuser_role'] = array(
+	  '#type' => 'select',
+	  '#title' => t('Editors with the role'),
+	  '#options' => $available_roles,
+	  '#default_value' => variable_get('articleperuser_role',  2),
+	  '#description' => t('Select the users\' role you want to show.'),
+	);
+	
+	$available_ctypes = node_type_get_types();
+	$ctypes_list = array('0' => 'All the content types');
+	foreach($available_ctypes AS $ctype_key => $ctype_data) {
+	  $ctypes_list[$ctype_key] = $ctype_data->name;
+	}
+	
+	$form['articleperuser_content_type'] = array(
+	  '#type' => 'select',
+	  '#title' => t('Content type'),
+	  '#options' => $ctypes_list,
+	  '#default_value' => variable_get('articleperuser_content_type',  'article'),
+	  '#description' => t('Select the node content type.'),
+	);
+	
+	$available_image_styles = image_style_options();
+	foreach($available_image_styles AS $style_key => $style_data) {
+		if($style_key != '') {
+			$styles_list[$style_key] = $style_data;
+		}
+	}
+	$form['articleperuser_avatar_image_style'] = array(
+	  '#type' => 'select',
+	  '#title' => t('Avatar image style'),
+	  '#options' => $styles_list,
+	  '#default_value' => variable_get('articleperuser_avatar_image_style',  'thumbnail'),
+	  '#description' => t('Select the image style which will be used for the editor\'s avatar.'),
+	);
+	
+	$form['articleperuser_list_num'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Maximum number of visible results'),
+      '#size' => 60,
+      '#description' => t('Insert here the maximum number of editors that will be visible. Insert 0 for all available editors, but warning, this might be a long list.'),
+      '#default_value' => variable_get('articleperuser_list_num',  5),
+    );
+  }
+  return $form;
+}
+
+
+/**
+ * Implements hook_block_save().
+ *
+ * This hook declares how the configured options for a block
+ * provided by this module are saved.
+ */
+function articleperuser_block_save($delta = '', $edit = array()) {
+  // We need to save settings from the configuration form.
+  // We need to check $delta to make sure we are saving the right block.
+  if ($delta == 'articleperuser_list') {
+    // Have Drupal save the string to the database.
+    variable_set('articleperuser_role', $edit['articleperuser_role']);
+    variable_set('articleperuser_content_type', $edit['articleperuser_content_type']);
+    variable_set('articleperuser_avatar_image_style', $edit['articleperuser_avatar_image_style']);
+    variable_set('articleperuser_list_num', $edit['articleperuser_list_num']);
+  }
+  return;
+}
+
+function _articleperuser_list_content() {
+	$body = '';
+	$ctype = variable_get('articleperuser_content_type', 'article');
+	$urole = variable_get('articleperuser_role',  2);
+	$reslimit = variable_get('articleperuser_list_num', 5);
+	$avatar_style = variable_get('articleperuser_avatar_image_style', 'thumbnail');
+	
+	if($urole == 2) {
+	  $q = "
+	  SELECT * 
+		FROM (	
+		  SELECT n.nid, n.uid, n.changed
+		  FROM users_roles ur RIGHT JOIN users u
+			ON ur.uid = u.uid INNER JOIN node n 
+			ON u.uid = n.uid
+		  WHERE u.uid > 0 AND u.status = 1 " . (($ctype == '0') ? "" : " AND n.type = '" . $ctype . "' ") . " AND n.status = 1 
+		  ORDER BY n.nid DESC
+		) AS ln
+		GROUP BY ln.uid
+		ORDER BY ln.changed DESC
+	  ";
+	} else {
+	  $q = "
+	  SELECT * 
+		FROM (	
+		  SELECT n.nid, n.uid, n.changed
+		  FROM users_roles ur RIGHT JOIN users u
+			ON ur.uid = u.uid INNER JOIN node n 
+			ON u.uid = n.uid
+		  WHERE ur.rid = " . $urole . " AND u.status = 1 " . (($ctype == '0') ? "" : " AND n.type = '" . $ctype . "' ") . " AND n.status = 1 
+		  ORDER BY n.nid DESC
+		) AS ln
+		GROUP BY ln.uid
+		ORDER BY ln.changed DESC
+	  ";
+	}
+	
+	if ($reslimit > 0) $q .= " LIMIT " . $reslimit;
+	$result = db_query($q);	
+	
+	foreach ($result as $record) {
+		
+		$curnode = node_load($record->nid);
+		$curuser = user_load($record->uid);
+		
+		$body .= '<div class="opinion_item">';
+		
+		if(isset($curuser->picture) && isset($curuser->picture->uri)) { 
+		  $body .= '<div class="user_pic">';
+		  if(strpos($curuser->picture->uri, 'public://') !== false) {
+			  $body .= l('<img src="' . image_style_url($avatar_style, $curuser->picture->uri) . '">', 'user/' . $curuser->uid, array('html' => true));
+		  } else {
+			  $body .= l('<img src="/' . $curuser->picture->uri . '">', 'user/' . $curuser->uid, array('html' => true));
+		  }
+		  $body .= '</div>';
+		}
+		
+		$body .= '<div class="user_name">';
+		$body .= l($curuser->name, 'user/' . $curuser->uid);
+		$body .= '</div>';
+		
+		$body .= '<div class="node_title">';
+		$body .= l($curnode->title, 'node/' . $curnode->nid);
+		$body .= '</div>';
+		
+		$build_body = field_view_field('node', $curnode, 'body', 'teaser');
+		$body .= '<div class="node_teaser">';
+		$body .= render($build_body);
+		$body .= '</div>';
+		$body .= '<div style="clear: both;"> </div>';
+		$body .= '</div>';
+	}
+	
+	 
+	return $body;
+}
+
+
+
